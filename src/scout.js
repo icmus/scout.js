@@ -1940,11 +1940,27 @@
     $.register();
 })(Scout, document, window);
 $.touch.registerDriver("msft", function($, opts, doc, window) {
-    if(!("onmspointerdown" in doc) || !("MSGesture" in window)) return false;
+    if(!(("onmspointerdown" in doc) || ("onpointerdown" in doc)) || !("MSGesture" in window)) return false;
     var state = null,
         gesture = null,
         gestureEvents = ["MSGestureTap","MSGestureHold","MSGestureStart","MSGestureChange"],
-        gcount = 0;
+        gcount = 0,
+        _pointerEvents = {};
+        
+    if(window.PointerEvent) {
+        _pointerEvents = {
+            pointerdown: "pointerdown",
+            pointermove: "pointermove",
+            pointerup: "pointerup"
+        };
+    } else if (window.MSPointerEvent) {
+        _pointerEvents = {
+            pointerdown: "MSPointerDown",
+            pointermove: "MSPointerMove",
+            pointerup: "MSPointerUp"
+        };
+    }
+    
     function extract(e, start) {
         var result = {
             target: e.target, screenX: e.screenX, screenY: e.screenY,
@@ -2035,46 +2051,61 @@ $.touch.registerDriver("msft", function($, opts, doc, window) {
             gcount = 0;
         }
     }
-    doc.addEventListener("MSPointerDown", function(e) {
-        state = { start: extract(e) };
-        state.current = state.start;
-        $(e.target).trigger("pointerdown", state.start);
-        if(!gesture) {
-            gesture = new MSGesture();
-            // gestures must be tracked at the body level so that transformed
-            // elements don't mess up pointer tracking
-            gesture.target = doc.body;
-            for(var i in gestureEvents) {
-                gesture.target.addEventListener(gestureEvents[i], onGesture);
+    if (_pointerEvents.pointerdown) {
+        doc.addEventListener(_pointerEvents.pointerdown, function(e) {
+            state = { start: extract(e) };
+            state.current = state.start;
+            
+            if (!window.PointerEvent) {
+                $(e.target).trigger("pointerdown", state.start);
             }
-        }
-        gcount++;
-        gesture.addPointer(e.pointerId);
-    });
-    doc.addEventListener("MSPointerMove", function(e) {
-        if(!state || e.pointerId != state.start.id) return;
-        state.current = extract(e, state.start);
-        var $el = $(state.start.target);
-        $el.trigger("pointermove", state.current);
-        if(state.isDragging || state.current.distanceSquared > opts.dragThreshold * opts.dragThreshold) {
-            state.isDragging = true;
-            $el.trigger(state.isDragging ? "drag" : "dragstart", state.current);
-            var dx = state.current.deltaX,
-                dy = state.current.deltaY;
-            var st = opts.swipeThreshold;
-        }
-    });
-    doc.addEventListener("MSPointerUp", function(e) {
-        if(!state) return;
-        state.current = extract(e, state.start);
-        var $el = $(state.start.target);
-        if(state.isDragging) $el.trigger("dragend", state.current);
-        if(state.isRotating) $el.trigger("rotateend", state.current);
-        if(state.isScaling) $el.trigger("scaleend", state.current);
-        $el.trigger("pointerup", state.current);
-        endGesture();
-        state = null;
-    });
+            if(!gesture) {
+                gesture = new MSGesture();
+                // gestures must be tracked at the body level so that transformed
+                // elements don't mess up pointer tracking
+                gesture.target = doc.body;
+                for(var i in gestureEvents) {
+                    gesture.target.addEventListener(gestureEvents[i], onGesture);
+                }
+            }
+            gcount++;
+            gesture.addPointer(e.pointerId);
+        });
+    }
+    
+    if (_pointerEvents.pointermove) {
+        doc.addEventListener((_pointerEvents.pointermove, function(e) {
+            if(!state || e.pointerId != state.start.id) return;
+            state.current = extract(e, state.start);
+            var $el = $(state.start.target);
+            
+            if (!window.PointerEvent) {
+                $el.trigger("pointermove", state.current);
+            }
+            if(state.isDragging || state.current.distanceSquared > opts.dragThreshold * opts.dragThreshold) {
+                state.isDragging = true;
+                $el.trigger(state.isDragging ? "drag" : "dragstart", state.current);
+                var dx = state.current.deltaX,
+                    dy = state.current.deltaY;
+                var st = opts.swipeThreshold;
+            }
+        });
+    }
+    if (_pointerEvents.pointerup) {
+        doc.addEventListener(_pointerEvents.pointerup, function(e) {
+            if(!state) return;
+            state.current = extract(e, state.start);
+            var $el = $(state.start.target);
+            if(state.isDragging) $el.trigger("dragend", state.current);
+            if(state.isRotating) $el.trigger("rotateend", state.current);
+            if(state.isScaling) $el.trigger("scaleend", state.current);
+            if (!window.PointerEvent) {
+                $el.trigger("pointerup", state.current);
+            }
+            endGesture();
+            state = null;
+        });
+    }
     return true;
 });
 $.touch.registerDriver("apple", function($, opts, doc) {
